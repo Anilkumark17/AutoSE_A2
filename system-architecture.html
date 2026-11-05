@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python-Markdown Architecture Review</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#1b1f24; --muted:#5b6470; --line:#d9dee5;
+  --accent:#2f5bd3; --accent-soft:#e8eefc;
+  --code:#1d7a4f; --code-soft:#e3f4ea;
+  --adr:#8a5a00; --adr-soft:#fbf0d9;
+  --inf:#7a3fb0; --inf-soft:#f1e8fa;
+  --warn:#b4372f; --warn-soft:#fbe7e5;
+  --stage:#eef2f7; --stage-line:#9aa7b8;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121519; --panel:#1b1f25; --ink:#e7eaee; --muted:#9aa4b1; --line:#2e353e;
+    --accent:#7d9cf0; --accent-soft:#232c42;
+    --code:#5fcf98; --code-soft:#1c3328;
+    --adr:#e6b45a; --adr-soft:#3a2f1a;
+    --inf:#c49af0; --inf-soft:#2f2440;
+    --warn:#f08a80; --warn-soft:#3d2321;
+    --stage:#232931; --stage-line:#5d6878;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121519; --panel:#1b1f25; --ink:#e7eaee; --muted:#9aa4b1; --line:#2e353e;
+  --accent:#7d9cf0; --accent-soft:#232c42;
+  --code:#5fcf98; --code-soft:#1c3328;
+  --adr:#e6b45a; --adr-soft:#3a2f1a;
+  --inf:#c49af0; --inf-soft:#2f2440;
+  --warn:#f08a80; --warn-soft:#3d2321;
+  --stage:#232931; --stage-line:#5d6878;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.88em;background:var(--stage);padding:1px 5px;border-radius:4px;word-break:break-word}
+a{color:var(--accent)}
+header.top{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.top-inner{max-width:1180px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.top-inner h1{font-size:16px;margin:0;font-weight:650;flex:1 1 auto}
+nav.toc{display:flex;gap:4px;flex-wrap:wrap}
+nav.toc a{font-size:13px;text-decoration:none;color:var(--muted);padding:4px 8px;border-radius:6px}
+nav.toc a:hover{background:var(--stage);color:var(--ink)}
+button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:hover{background:var(--stage)}
+button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+section{margin:0 0 36px}
+h2{font-size:21px;margin:0 0 4px}
+h3{font-size:17px;margin:18px 0 6px}
+h4{font-size:14px;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.lede{color:var(--muted);margin:0 0 16px;max-width:820px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.kpi div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi b{display:block;font-size:20px}
+.kpi span{color:var(--muted);font-size:13px}
+/* evidence tags */
+.ev{display:inline-block;font-size:11px;font-weight:650;letter-spacing:.03em;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:1px;white-space:nowrap}
+.ev.c{background:var(--code-soft);color:var(--code)}
+.ev.a{background:var(--adr-soft);color:var(--adr)}
+.ev.i{background:var(--inf-soft);color:var(--inf)}
+.legend{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px;color:var(--muted);margin:6px 0 14px}
+ul.facts{list-style:none;padding:0;margin:6px 0}
+ul.facts li{padding:5px 0 5px 0;border-bottom:1px dashed var(--line)}
+ul.facts li:last-child{border-bottom:0}
+body.only-c li[data-ev]:not([data-ev="c"]),
+body.only-a li[data-ev]:not([data-ev="a"]),
+body.only-i li[data-ev]:not([data-ev="i"]){opacity:.25}
+/* diagram */
+.diagram{width:100%;overflow-x:auto}
+.diagram svg{display:block;width:100%;min-width:680px;height:auto}
+svg text{fill:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+svg .box{fill:var(--stage);stroke:var(--stage-line);stroke-width:1.2}
+svg .box.core{fill:var(--accent-soft);stroke:var(--accent)}
+svg .box.ext{fill:var(--adr-soft);stroke:var(--adr)}
+svg .box.stash{fill:var(--inf-soft);stroke:var(--inf)}
+svg .box.out{fill:var(--code-soft);stroke:var(--code)}
+svg .t{font-size:13px;font-weight:650}
+svg .s{font-size:11px;fill:var(--muted)}
+svg .lbl{font-size:11px;fill:var(--muted)}
+svg .flow{stroke:var(--ink);stroke-width:1.6;fill:none}
+svg .ctl{stroke:var(--accent);stroke-width:1.3;fill:none;stroke-dasharray:5 4}
+svg .ex{stroke:var(--adr);stroke-width:1.3;fill:none;stroke-dasharray:5 4}
+svg .st{stroke:var(--inf);stroke-width:1.3;fill:none;stroke-dasharray:3 3}
+svg .hot{cursor:pointer}
+svg .hot:hover .box{stroke-width:2.4}
+.comp-detail{margin-top:12px;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:6px;min-height:48px}
+.comp-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;margin-top:14px}
+.comp-list div{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel)}
+.comp-list b{display:block;margin-bottom:2px}
+.comp-list p{margin:0;font-size:13.5px;color:var(--muted)}
+/* ADR cards */
+.adr{border-top:4px solid var(--accent)}
+.adr-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.adr-head h3{margin:0}
+.verdict{font-size:12.5px;font-weight:650;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.v-strong{background:var(--code-soft);color:var(--code)}
+.v-reason{background:var(--adr-soft);color:var(--adr)}
+.v-concern{background:var(--warn-soft);color:var(--warn)}
+.flow5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:14px 0}
+.flow5 div{position:relative;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:13px;background:var(--bg)}
+.flow5 div b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+.flow5 div:not(:last-child)::after{content:"";position:absolute;right:-8px;top:50%;width:8px;height:2px;background:var(--stage-line)}
+.flow5 .f-before{border-color:var(--stage-line)}
+.flow5 .f-problem{border-color:var(--warn);background:var(--warn-soft)}
+.flow5 .f-decision{border-color:var(--accent);background:var(--accent-soft)}
+.flow5 .f-after{border-color:var(--code);background:var(--code-soft)}
+.flow5 .f-trade{border-color:var(--adr);background:var(--adr-soft)}
+@media (max-width:820px){
+  .flow5{grid-template-columns:1fr}
+  .flow5 div:not(:last-child)::after{right:auto;left:50%;top:auto;bottom:-8px;width:2px;height:8px}
+}
+details{border:1px solid var(--line);border-radius:8px;margin:8px 0;background:var(--panel)}
+details>summary{cursor:pointer;padding:9px 12px;font-weight:600;list-style:none}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"\25B8";display:inline-block;width:16px;color:var(--muted);transition:transform .15s}
+details[open]>summary::before{transform:rotate(90deg)}
+details>.body{padding:0 14px 12px}
+/* tables */
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--stage)}
+td.sc{white-space:nowrap;font-weight:600}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:0}
+.d-good{background:var(--code)} .d-mid{background:var(--adr)} .d-bad{background:var(--warn)}
+.warnlist .panel{border-left:4px solid var(--warn)}
+.warnlist h3{margin-top:0}
+.warnlist p{margin:4px 0;font-size:14px}
+footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <h1>Python-Markdown 3.11.2 · Architecture Review</h1>
+    <nav class="toc">
+      <a href="#overview">System</a><a href="#adrs">ADRs</a><a href="#eval">Evaluation</a><a href="#relation">Relationships</a><a href="#careful">Cautions</a>
+    </nav>
+    <button id="themeBtn" type="button" aria-label="Toggle theme">Theme</button>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ INTRO ============ -->
+<section>
+  <h2>What the system does</h2>
+  <p class="lede">Python-Markdown converts one Unicode Markdown string into one HTML string. A <code>Markdown</code> object builds a fixed five-stage pipeline. Each stage is an ordered list of small processor objects. Extensions plug new processors into those lists. Nothing else in the core changes.</p>
+  <div class="kpi">
+    <div><b>5 stages</b><span>pre → block → tree (+inline) → serialize → post</span></div>
+    <div><b>5 registries</b><span>every stage held in a <code>util.Registry</code></span></div>
+    <div><b>18 built-in extensions</b><span>all loaded via entry points in <code>pyproject.toml</code></span></div>
+    <div><b>0 runtime deps</b><span>standard library only (<code>xml.etree</code>, <code>html.parser</code>)</span></div>
+  </div>
+  <div class="panel">
+    <b>How to read this page.</b> Every claim carries an evidence tag.
+    <div class="legend">
+      <span><span class="ev c">CODE</span>Seen in the source under <code>experiment/cond-B/markdown/</code></span>
+      <span><span class="ev a">ADR</span>Stated by <code>ARCHITECTURE.md</code>, not independently confirmed here</span>
+      <span><span class="ev i">INFERENCE</span>My own judgement as reviewer</span>
+    </div>
+    <div class="legend">Focus on one kind:
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="c">Code facts</button>
+      <button type="button" data-filter="a">ADR claims</button>
+      <button type="button" data-filter="i">Inferences</button>
+    </div>
+    <p style="margin:0;font-size:13.5px;color:var(--muted)">Important limit: this checkout has no upstream git history. The commits the ADRs cite (<code>6ee07d2</code>, <code>cd73243</code>) cannot be opened here. So the "before" state of ADR-1 and ADR-2 rests on the ADR text alone.</p>
+  </div>
+</section>
+
+<!-- ============ 1. OVERVIEW ============ -->
+<section id="overview">
+  <h2>1 · Overall system architecture</h2>
+  <p class="lede">Solid arrows carry the document. Dashed arrows show control and side channels. Click a box for a short explanation.</p>
+  <div class="panel">
+    <div class="diagram">
+<svg viewBox="0 0 1100 520" role="img" aria-label="Python-Markdown pipeline diagram">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="currentColor"/></marker>
+  </defs>
+  <!-- Entry -->
+  <g class="hot" data-k="entry"><rect class="box core" x="20" y="20" width="250" height="62" rx="8"/>
+    <text class="t" x="34" y="45">Entry point</text><text class="s" x="34" y="65">markdown.markdown() · Markdown CLI</text></g>
+  <!-- Core -->
+  <g class="hot" data-k="core"><rect class="box core" x="340" y="20" width="420" height="62" rx="8"/>
+    <text class="t" x="354" y="45">Markdown class (core.py)</text><text class="s" x="354" y="65">build_parser() · registerExtensions() · convert() · reset()</text></g>
+  <!-- Extensions -->
+  <g class="hot" data-k="ext"><rect class="box ext" x="830" y="20" width="250" height="62" rx="8"/>
+    <text class="t" x="844" y="45">Extension system</text><text class="s" x="844" y="65">Extension.extendMarkdown(md)</text></g>
+
+  <path class="flow" style="color:var(--ink)" d="M270 51H336" marker-end="url(#ah)"/>
+  <text class="lbl" x="276" y="44">text</text>
+  <path class="ex" style="color:var(--adr)" d="M830 51H764" marker-end="url(#ah)"/>
+  <text class="lbl" x="770" y="44">register()</text>
+
+  <!-- control arrows from core down to registries -->
+  <path class="ctl" style="color:var(--accent)" d="M550 82V140" marker-end="url(#ah)"/>
+  <text class="lbl" x="558" y="118">builds + runs each stage in order</text>
+
+  <!-- Stage row -->
+  <g class="hot" data-k="pre"><rect class="box" x="20" y="150" width="190" height="86" rx="8"/>
+    <text class="t" x="34" y="176">1 Preprocessors</text><text class="s" x="34" y="196">list of lines → lines</text><text class="s" x="34" y="214">normalize · html_block</text></g>
+  <g class="hot" data-k="block"><rect class="box" x="240" y="150" width="200" height="86" rx="8"/>
+    <text class="t" x="254" y="176">2 Block parser</text><text class="s" x="254" y="196">lines → ElementTree</text><text class="s" x="254" y="214">11 BlockProcessors (test/run)</text></g>
+  <g class="hot" data-k="tree"><rect class="box" x="470" y="150" width="200" height="86" rx="8"/>
+    <text class="t" x="484" y="176">3 Tree processors</text><text class="s" x="484" y="196">tree → tree</text><text class="s" x="484" y="214">inline(20) prettify(10) unescape(0)</text></g>
+  <g class="hot" data-k="ser"><rect class="box out" x="700" y="150" width="170" height="86" rx="8"/>
+    <text class="t" x="714" y="176">4 Serializer</text><text class="s" x="714" y="196">tree → string</text><text class="s" x="714" y="214">html / xhtml</text></g>
+  <g class="hot" data-k="post"><rect class="box" x="900" y="150" width="180" height="86" rx="8"/>
+    <text class="t" x="914" y="176">5 Postprocessors</text><text class="s" x="914" y="196">string → string</text><text class="s" x="914" y="214">raw_html(30) amp(20)</text></g>
+
+  <path class="flow" style="color:var(--ink)" d="M210 193H236" marker-end="url(#ah)"/>
+  <path class="flow" style="color:var(--ink)" d="M440 193H466" marker-end="url(#ah)"/>
+  <path class="flow" style="color:var(--ink)" d="M670 193H696" marker-end="url(#ah)"/>
+  <path class="flow" style="color:var(--ink)" d="M870 193H896" marker-end="url(#ah)"/>
+
+  <!-- Inline patterns under tree -->
+  <g class="hot" data-k="inline"><rect class="box" x="470" y="290" width="200" height="70" rx="8"/>
+    <text class="t" x="484" y="316">Inline patterns</text><text class="s" x="484" y="336">regex → element/text</text><text class="s" x="484" y="352">links, code, emphasis, html…</text></g>
+  <path class="ctl" style="color:var(--accent)" d="M570 236V286" marker-end="url(#ah)"/>
+  <text class="lbl" x="578" y="266">InlineProcessor calls</text>
+
+  <!-- Output -->
+  <g class="hot" data-k="out"><rect class="box out" x="900" y="290" width="180" height="70" rx="8"/>
+    <text class="t" x="914" y="316">HTML output</text><text class="s" x="914" y="336">returned string</text><text class="s" x="914" y="352">(not sanitized)</text></g>
+  <path class="flow" style="color:var(--ink)" d="M990 236V286" marker-end="url(#ah)"/>
+
+  <!-- Stash + util -->
+  <g class="hot" data-k="stash"><rect class="box stash" x="20" y="420" width="560" height="78" rx="8"/>
+    <text class="t" x="34" y="446">Shared utilities (util.py)</text>
+    <text class="s" x="34" y="466">Registry · HtmlStash (md.htmlStash) · Processor · AtomicString</text>
+    <text class="s" x="34" y="484">placeholders built from STX/ETX control characters</text></g>
+  <path class="st" style="color:var(--inf)" d="M115 236V416" marker-end="url(#ah)"/>
+  <text class="lbl" x="122" y="330">store raw HTML</text>
+  <text class="lbl" x="122" y="345">→ placeholder</text>
+  <path class="st" style="color:var(--inf)" d="M520 360V416" marker-end="url(#ah)"/>
+  <text class="lbl" x="420" y="395">inline html store</text>
+  <path class="st" style="color:var(--inf)" d="M580 470H990V240" marker-end="url(#ah)"/>
+  <text class="lbl" x="700" y="462">raw_html reads stash, swaps placeholders back</text>
+</svg>
+    </div>
+    <div class="comp-detail" id="compDetail" aria-live="polite">Click any box in the diagram.</div>
+
+    <div class="comp-list">
+      <div><b>Main entry point</b><p><code>markdown.markdown(text, **kw)</code> creates a <code>Markdown</code> and calls <code>convert()</code>. The CLI in <code>__main__.py</code> wraps the same path.</p></div>
+      <div><b>Core engine</b><p><code>Markdown</code> builds every stage in <code>build_parser()</code>, loads extensions, then <code>convert()</code> runs stages in fixed order.</p></div>
+      <div><b>Preprocessors</b><p>Clean the raw lines. <code>HtmlBlockPreprocessor</code> cuts out raw HTML blocks and leaves placeholders.</p></div>
+      <div><b>Block parser</b><p>Splits text into blocks. Asks each <code>BlockProcessor</code> by priority: first to accept builds tree nodes.</p></div>
+      <div><b>Tree processors</b><p>Walk and change the element tree. The <code>inline</code> processor is the one that runs inline patterns.</p></div>
+      <div><b>Inline processing</b><p>Regex patterns turn text inside elements into links, code spans, emphasis and so on.</p></div>
+      <div><b>Postprocessors</b><p>Work on the final string. Put stashed raw HTML back. Restore <code>&amp;</code>.</p></div>
+      <div><b>HTML output</b><p>Serializer writes HTML or XHTML. Core strips the wrapping <code>&lt;div&gt;</code>. Output is not sanitized.</p></div>
+      <div><b>Extension system</b><p>Each extension adds, replaces or removes processors in the registries. Core never imports a specific extension.</p></div>
+    </div>
+
+    <h4>Verified facts behind the diagram</h4>
+    <ul class="facts">
+      <li data-ev="c"><span class="ev c">CODE</span><code>Markdown.convert()</code> runs: preprocessors → <code>parser.parseDocument()</code> → tree processors → serializer → strip <code>&lt;div&gt;</code> → postprocessors (<code>core.py</code>).</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Default priorities: preprocessors <code>normalize_whitespace</code> 30, <code>html_block</code> 20; tree <code>inline</code> 20, <code>prettify</code> 10, <code>unescape</code> 0; post <code>raw_html</code> 30, <code>amp_substitute</code> 20.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>A tree processor may return a new root. <code>convert()</code> swaps it in when the return value is not <code>None</code>.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Inline patterns reach the stage list only through the <code>inline</code> tree processor. Some inline patterns look it up by name: <code>md.treeprocessors['inline'].stashed_nodes</code>.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Extensions register at chosen priorities, for example <code>toc</code> tree 5, <code>attr_list</code> tree 8, <code>abbr</code> tree 7, <code>fenced_code_block</code> pre 25, <code>footnotes</code> in four stages.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 2. ADRS ============ -->
+<section id="adrs">
+  <h2>2 · The three ADRs</h2>
+  <p class="lede">Each card shows the documented story as Before → Problem → Decision → After → Trade-offs, then answers the questions with tagged evidence.</p>
+
+  <!-- ADR-1 -->
+  <div class="panel adr" style="margin-bottom:18px">
+    <div class="adr-head">
+      <h3>ADR-1 · Replace homegrown OrderedDict with purpose-built Registry</h3>
+      <span class="verdict v-strong">Strong architectural decision</span>
+    </div>
+    <div class="flow5">
+      <div class="f-before"><b>Before</b>Home-grown <code>OrderedDict</code>; items placed with position strings like <code>"&lt;reference"</code>.</div>
+      <div class="f-problem"><b>Problem</b>Extensions must insert between built-ins, remove or replace them. Position strings make that relative and fragile.</div>
+      <div class="f-decision"><b>Decision</b>One <code>Registry</code>: <code>register(item, name, priority)</code>, <code>deregister(name)</code>. Higher runs first.</div>
+      <div class="f-after"><b>After</b>All 5 stages use the same structure. Order is a number, lookup is a name.</div>
+      <div class="f-trade"><b>Trade-offs</b>Priority numbers become an unwritten public API. Re-registering a name loses the old item.</div>
+    </div>
+
+    <details open><summary>Previous approach and its problem</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>Earlier design used a home-grown <code>OrderedDict</code> with relative positions such as <code>"&lt;reference"</code>. Cites commit <code>6ee07d2</code>.</li>
+      <li data-ev="a"><span class="ev a">ADR</span>The need: extensions must slot processors between built-ins (footnote inline pattern before reference links) and remove or replace built-ins.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>The ADR does not spell out a concrete failure of the old scheme. A relative-position scheme means an item's place depends on another item existing, so removing one can break another's placement. That is my reading, not a documented incident.</li>
+    </ul></div></details>
+
+    <details><summary>How Registry works and why it improves the architecture</summary><div class="body"><ul class="facts">
+      <li data-ev="c"><span class="ev c">CODE</span><code>Registry</code> keeps a <code>dict</code> name→item plus a list of <code>(name, priority)</code>. It sorts lazily, high to low, only when read after a change.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Read like a list: iterate, <code>len()</code>, index by int, by name, or by slice. <code>in</code> works with a name or an instance.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>register()</code> with an existing name deregisters the old item first. The docstring warns the old item is lost and position is not kept.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>deregister(name, strict=True)</code> raises <code>ValueError</code> for unknown names; <code>strict=False</code> fails silently.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Used by all five stages: <code>md.preprocessors</code>, <code>md.parser.blockprocessors</code>, <code>md.inlinePatterns</code>, <code>md.treeprocessors</code>, <code>md.postprocessors</code>. <code>tests/test_apis.py</code> has a <code>RegistryTests</code> class.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Improvement: placement becomes absolute. An extension states "run at 175" without depending on any neighbour being present. One mechanism for five stages means one thing to learn.</li>
+    </ul></div></details>
+
+    <details><summary>Trade-offs</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>Priorities are a de-facto public API; changing a built-in priority can silently reorder extensions.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Equal priorities are not rejected. Python's stable sort keeps registration order for ties, so extension load order decides. Docstring does not mention ties.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Nothing documents the full priority map in one place; each module declares its own numbers. Finding a free slot means reading several files.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Order bugs fail quietly: wrong order gives wrong HTML, not an error.</li>
+    </ul></div></details>
+
+    <details><summary>Does it make sense?</summary><div class="body"><p><span class="ev i">INFERENCE</span>Yes. The structure is small (about 140 lines), generic, tested, and matches what extensions need: name, order, replace, remove. Its main weakness, numeric priorities as hidden contract, is the normal cost of any priority-based plugin system and is called out by the ADR itself.</p></div></details>
+  </div>
+
+  <!-- ADR-2 -->
+  <div class="panel adr" style="margin-bottom:18px;border-top-color:var(--adr)">
+    <div class="adr-head">
+      <h3>ADR-2 · Refactor Extension loading</h3>
+      <span class="verdict v-reason">Reasonable decision with trade-offs</span>
+    </div>
+    <div class="flow5">
+      <div class="f-before"><b>Before</b>Short names special-cased to modules in <code>markdown.extensions</code> or named <code>mdx_*</code>.</div>
+      <div class="f-problem"><b>Problem</b>Users want short names like <code>'toc'</code>. Special cases treat built-in and third-party extensions differently.</div>
+      <div class="f-decision"><b>Decision</b><code>build_extension()</code>: entry point → <code>module:Class</code> → <code>module.makeExtension()</code>.</div>
+      <div class="f-after"><b>After</b>Built-ins are entry points in <code>pyproject.toml</code>, same as third-party. Core imports no extension.</div>
+      <div class="f-trade"><b>Trade-offs</b>Short names need installed package metadata. Name clashes resolve to first found, silently.</div>
+    </div>
+
+    <details open><summary>How loading worked, and the problem</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>Previously short names were special-cased to modules inside <code>markdown.extensions</code> or modules named <code>mdx_*</code>. Cites commit <code>cd73243</code>.</li>
+      <li data-ev="a"><span class="ev a">ADR</span>Context: users want to enable extensions by short names such as <code>'toc'</code>.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Naming conventions baked into core give built-ins a privileged path and force third parties to follow a naming rule. The ADR implies this; it does not quote a bug report.</li>
+    </ul></div></details>
+
+    <details><summary>How the new mechanism works</summary><div class="body"><ul class="facts">
+      <li data-ev="c"><span class="ev c">CODE</span><code>registerExtensions()</code> accepts <code>Extension</code> instances or strings. Strings go to <code>build_extension(name, configs)</code>. Anything else that is not <code>None</code> raises <code>TypeError</code>.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>build_extension()</code> order: (1) entry point in group <code>markdown.extensions</code>, first match wins; (2) <code>path.to.module:ClassName</code>; (3) <code>path.to.module</code> plus its <code>makeExtension(**configs)</code>.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>util.get_installed_extensions()</code> is wrapped in <code>@lru_cache</code>, so metadata is scanned once per process.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>All 18 built-ins are listed under <code>[project.entry-points.'markdown.extensions']</code> in <code>pyproject.toml</code>.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>Base <code>Extension</code>: options in <code>config = {'key': [default, 'description']}</code>; unknown keys raise <code>KeyError</code>; bool options pass through <code>parseBoolValue</code>; <code>extendMarkdown(md)</code> must be overridden.</li>
+    </ul></div></details>
+
+    <details><summary>Extensibility and maintainability gains</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>Built-in and third-party extensions load the same way; core never imports a specific extension.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>core.py</code> imports only <code>from .extensions import Extension</code> (the base class).</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Uses Python's standard plugin mechanism instead of a custom one. A third-party package becomes a first-class short name just by declaring an entry point.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Dependency direction is clean: extensions → core, never back. That keeps core testable without any extension.</li>
+    </ul></div></details>
+
+    <details><summary>Trade-offs</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>A new built-in needs both a module with <code>makeExtension</code> and an entry point. Short names work only after install.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>If two distributions register the same name, <code>entry_points[0]</code> is used. No warning is logged.</li>
+      <li data-ev="c"><span class="ev c">CODE</span>The entry-point path calls the loaded object with configs directly; the <code>Extension</code> type check happens later, in <code>registerExtensions()</code>.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Three lookup paths mean three ways to fail. Error messages differ per path (ImportError vs AttributeError text), which can confuse users.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Running from a source tree without <code>pip install -e</code> breaks short names. The README for this experiment installs first for that reason.</li>
+    </ul></div></details>
+
+    <details><summary>Does it make sense?</summary><div class="body"><p><span class="ev i">INFERENCE</span>Yes, with caveats. Entry points are the idiomatic Python plugin choice and remove the built-in/third-party split. The cost is reliance on packaging metadata and silent first-wins clashes. Those are acceptable for a library, but a warning on duplicate names would be cheap insurance.</p></div></details>
+  </div>
+
+  <!-- ADR-3 -->
+  <div class="panel adr" style="border-top-color:var(--inf)">
+    <div class="adr-head">
+      <h3>ADR-3 · HTML preservation using HtmlStash</h3>
+      <span class="verdict v-reason">Reasonable decision with trade-offs</span>
+    </div>
+    <div class="flow5">
+      <div class="f-before"><b>Before</b>Raw HTML sits inside Markdown text. No earlier design is documented.</div>
+      <div class="f-problem"><b>Problem</b>Tree text is escaped on output, and Markdown rules would rewrite the author's HTML.</div>
+      <div class="f-decision"><b>Decision</b>Cut HTML out early, store in <code>md.htmlStash</code>, leave STX/ETX placeholder, swap back after serialization.</div>
+      <div class="f-after"><b>After</b>Author HTML passes through byte-for-byte. Any stage can inject finished HTML.</div>
+      <div class="f-trade"><b>Trade-offs</b>Placeholders leak into element text; shared mutable state; restore depends on ordering.</div>
+    </div>
+
+    <details open><summary>What problem raw HTML introduces</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>The document is an ElementTree whose text the serializer escapes. Raw HTML must reach output unchanged and must not be parsed as Markdown.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>convert()</code> serializes the whole tree before postprocessors run, so any <code>&lt;</code> left in element text would come out as <code>&amp;lt;</code>.</li>
+      <li data-ev="a"><span class="ev a">ADR</span>The ADR marks its own "before" and alternatives as <em>inferred</em>: no commit or comment records them. This page treats them the same way.</li>
+    </ul></div></details>
+
+    <details><summary>How the three parts work together</summary><div class="body">
+      <div class="diagram">
+<svg viewBox="0 0 1000 200" role="img" aria-label="HtmlStash round trip">
+  <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="currentColor"/></marker></defs>
+  <rect class="box" x="10" y="20" width="200" height="66" rx="8"/><text class="t" x="24" y="44">NormalizeWhitespace</text><text class="s" x="24" y="64">strips STX/ETX from input</text>
+  <rect class="box" x="250" y="20" width="220" height="66" rx="8"/><text class="t" x="264" y="44">HtmlBlockPreprocessor</text><text class="s" x="264" y="64">HTMLExtractor finds blocks</text>
+  <rect class="box" x="510" y="20" width="200" height="66" rx="8"/><text class="t" x="524" y="44">Block / tree / inline</text><text class="s" x="524" y="64">see only placeholders</text>
+  <rect class="box" x="750" y="20" width="240" height="66" rx="8"/><text class="t" x="764" y="44">RawHtmlPostprocessor</text><text class="s" x="764" y="64">regex swaps placeholder → HTML</text>
+  <rect class="box stash" x="250" y="130" width="600" height="56" rx="8"/><text class="t" x="264" y="154">md.htmlStash  (rawHtmlBlocks list, html_counter)</text><text class="s" x="264" y="174">store(html) → "\x02wzxhzdk:N\x03"  ·  reset() each document</text>
+  <path class="flow" style="color:var(--ink)" d="M210 53H246" marker-end="url(#ah2)"/>
+  <path class="flow" style="color:var(--ink)" d="M470 53H506" marker-end="url(#ah2)"/>
+  <path class="flow" style="color:var(--ink)" d="M710 53H746" marker-end="url(#ah2)"/>
+  <path class="st" style="color:var(--inf)" d="M360 86V126" marker-end="url(#ah2)"/><text class="lbl" x="368" y="110">store()</text>
+  <path class="st" style="color:var(--inf)" d="M610 86V126" marker-end="url(#ah2)"/><text class="lbl" x="618" y="110">inline html, fenced code, smarty…</text>
+  <path class="st" style="color:var(--inf)" d="M850 158H870V90" marker-end="url(#ah2)"/><text class="lbl" x="878" y="118">read by index</text>
+</svg>
+      </div>
+      <ul class="facts">
+        <li data-ev="c"><span class="ev c">CODE</span><code>HtmlStash.store(html)</code> appends to <code>rawHtmlBlocks</code> and returns <code>HTML_PLACEHOLDER % n</code> = <code>STX + "wzxhzdk:n" + ETX</code>.</li>
+        <li data-ev="c"><span class="ev c">CODE</span><code>HtmlBlockPreprocessor</code> (priority 20) feeds the whole source to <code>HTMLExtractor</code>, which calls <code>md.htmlStash.store()</code> for each raw block.</li>
+        <li data-ev="c"><span class="ev c">CODE</span><code>NormalizeWhitespace</code> (priority 30, runs first) removes STX and ETX from user input, so a user cannot forge a placeholder.</li>
+        <li data-ev="c"><span class="ev c">CODE</span><code>RawHtmlPostprocessor</code> (priority 30) replaces <code>&lt;p&gt;PLACEHOLDER&lt;/p&gt;</code> or bare placeholders. Block-level HTML loses the <code>&lt;p&gt;</code> wrapper. Keys ≥ <code>html_counter</code> are left as-is. Substitution is recursive, so nested placeholders resolve.</li>
+        <li data-ev="c"><span class="ev c">CODE</span>Other users of the stash: inline <code>html</code>/<code>entity</code> patterns, <code>fenced_code</code>, <code>codehilite</code>, <code>smarty</code>, <code>md_in_html</code>; <code>toc</code> reads it to build plain-text labels.</li>
+      </ul>
+    </div></details>
+
+    <details><summary>Why a stash instead of the element tree</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR (inferred alternatives)</span>Parsing HTML into the tree would let the serializer rewrite the author's markup. Leaving it in element text would get it escaped.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>Raw HTML can be malformed or partial (an opening tag in one block, closing in another). ElementTree cannot hold that. An opaque string can.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>A placeholder is plain text, so every Markdown processor ignores it for free. No processor needs to know HTML exists.</li>
+    </ul></div></details>
+
+    <details><summary>Benefits and limitations</summary><div class="body"><ul class="facts">
+      <li data-ev="a"><span class="ev a">ADR</span>Benefit: any stage can inject finished HTML with <code>store()</code>. Cost: code that reads element text (e.g. <code>toc</code> labels) must tolerate placeholders.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>md_in_html</code> edits <code>htmlStash.rawHtmlBlocks</code> directly by index (<code>pop</code> then <code>insert(index, '')</code>) to keep later indices valid. That bypasses the stash API.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>HtmlStash.reset()</code> clears <code>html_counter</code> and <code>rawHtmlBlocks</code> only. <code>tag_counter</code> and <code>tag_data</code> are not reset, and <code>store_tag()</code> has no caller inside the package.</li>
+      <li data-ev="c"><span class="ev c">CODE</span><code>convert()</code> docstring warns: output is not sanitized. Stashed HTML passes straight through.</li>
+      <li data-ev="i"><span class="ev i">INFERENCE</span>The stash is a global side channel on <code>md</code>. Correctness depends on index stability and on <code>raw_html</code> running before anything that would alter placeholders.</li>
+    </ul></div></details>
+
+    <details><summary>Does it make sense?</summary><div class="body"><p><span class="ev i">INFERENCE</span>Yes as a core idea; the alternatives the ADR lists both lose the author's markup. The weak spot is enforcement, not the concept: the stash's internal list is public, one built-in extension edits it by index, and part of its state is not reset. Rated "reasonable with trade-offs" rather than "strong" for that reason.</p></div></details>
+  </div>
+</section>
+
+<!-- ============ 3. CRITICAL EVALUATION ============ -->
+<section id="eval">
+  <h2>3 · Critical architectural evaluation</h2>
+  <p class="lede">Independent reviewer scores. <span class="dot d-good"></span>good <span class="dot d-mid"></span>mixed <span class="dot d-bad"></span>concern. The reason column cites code facts where they exist; the score itself is my judgement.</p>
+  <div class="panel tbl-wrap">
+    <table>
+      <thead><tr><th>Criterion</th><th>ADR-1 Registry</th><th>ADR-2 Extension loading</th><th>ADR-3 HtmlStash</th></tr></thead>
+      <tbody>
+        <tr><td class="sc">Separation of responsibilities</td>
+          <td><span class="dot d-good"></span>Registry only orders and looks up. Processors do the work.</td>
+          <td><span class="dot d-good"></span>Resolve name (core) vs. change pipeline (extension) are split.</td>
+          <td><span class="dot d-mid"></span>Clear job (hold HTML) but many writers; <code>md_in_html</code> also edits its internals.</td></tr>
+        <tr><td class="sc">Maintainability</td>
+          <td><span class="dot d-good"></span>Small, typed, unit-tested class.</td>
+          <td><span class="dot d-good"></span>One function, three documented paths.</td>
+          <td><span class="dot d-mid"></span>Placeholder handling spreads to <code>toc</code>, <code>md_in_html</code>, inline patterns.</td></tr>
+        <tr><td class="sc">Extensibility</td>
+          <td><span class="dot d-good"></span>Insert, replace, remove anywhere by name and number.</td>
+          <td><span class="dot d-good"></span>Any installed package can add a short name.</td>
+          <td><span class="dot d-good"></span>Any stage can inject finished HTML via <code>store()</code>.</td></tr>
+        <tr><td class="sc">Coupling &amp; dependencies</td>
+          <td><span class="dot d-mid"></span>Loose by name, but extensions couple to built-in priority numbers.</td>
+          <td><span class="dot d-good"></span>Core imports only the base class. Depends on packaging metadata.</td>
+          <td><span class="dot d-bad"></span>Shared mutable state on <code>md</code>; readers depend on list indices and placeholder format.</td></tr>
+        <tr><td class="sc">Performance</td>
+          <td><span class="dot d-good"></span>Lazy sort; reads only check a flag once sorted.</td>
+          <td><span class="dot d-good"></span>Entry-point scan cached with <code>lru_cache</code>.</td>
+          <td><span class="dot d-good"></span>One regex pass at the end; skipped when the stash is empty.</td></tr>
+        <tr><td class="sc">Complexity introduced</td>
+          <td><span class="dot d-good"></span>Low. Familiar list-plus-dict model.</td>
+          <td><span class="dot d-mid"></span>Three lookup modes and two config paths to learn.</td>
+          <td><span class="dot d-mid"></span>Invisible control characters make debugging harder.</td></tr>
+        <tr><td class="sc">Long-term impact</td>
+          <td><span class="dot d-mid"></span>Priority numbers are frozen by ecosystem use.</td>
+          <td><span class="dot d-good"></span>Aligned with Python packaging standards.</td>
+          <td><span class="dot d-mid"></span>Hard to replace: placeholder format is relied on outside core.</td></tr>
+        <tr><th>Assessment</th>
+          <td><span class="verdict v-strong">Strong architectural decision</span></td>
+          <td><span class="verdict v-reason">Reasonable with trade-offs</span></td>
+          <td><span class="verdict v-reason">Reasonable with trade-offs</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid g3" style="margin-top:14px">
+    <div class="panel"><h3 style="margin-top:0">Where I disagree with or extend the ADR author</h3>
+      <ul class="facts">
+        <li data-ev="i"><span class="ev i">INFERENCE</span>ADR-1 marks itself "Verified". The commit is cited but not inspectable here; only the current code is verified.</li>
+        <li data-ev="i"><span class="ev i">INFERENCE</span>ADR-2 lists "alternatives considered" without saying they are inferred, unlike ADR-3. Treat ADR-1 and ADR-2 alternatives as unconfirmed too.</li>
+        <li data-ev="i"><span class="ev i">INFERENCE</span>ADR-3 does not mention that <code>md_in_html</code> mutates the stash list directly or that <code>tag_data</code> is never reset. Both weaken its "single round trip" story.</li>
+      </ul></div>
+    <div class="panel"><h3 style="margin-top:0">Insufficient evidence</h3>
+      <ul class="facts">
+        <li data-ev="i"><span class="ev i">INFERENCE</span>Real performance numbers: no benchmark exists in this checkout, so the performance row is a code-reading estimate only.</li>
+        <li data-ev="i"><span class="ev i">INFERENCE</span>Whether the old <code>OrderedDict</code> or <code>mdx_*</code> schemes caused actual user bugs: not documented.</li>
+      </ul></div>
+    <div class="panel"><h3 style="margin-top:0">Low-cost improvements I would suggest</h3>
+      <ul class="facts">
+        <li data-ev="i"><span class="ev i">INFERENCE</span>Log a warning on duplicate entry-point names.</li>
+        <li data-ev="i"><span class="ev i">INFERENCE</span>Publish one table of built-in priorities as part of the API docs.</li>
+        <li data-ev="i"><span class="ev i">INFERENCE</span>Give <code>HtmlStash</code> a <code>replace(index, value)</code> method and reset all of its counters.</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ============ 4. RELATIONSHIPS ============ -->
+<section id="relation">
+  <h2>4 · How the ADRs relate</h2>
+  <p class="lede">Each ADR owns one concern. Together they define how the pipeline is built, who may change it, and how foreign content survives it.</p>
+  <div class="panel">
+    <div class="diagram">
+<svg viewBox="0 0 1000 330" role="img" aria-label="ADR relationship diagram">
+  <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="currentColor"/></marker></defs>
+  <!-- ADR boxes -->
+  <rect class="box ext" x="20" y="20" width="280" height="76" rx="8"/><text class="t" x="34" y="46">ADR-2 · Extension loading</text><text class="s" x="34" y="66">Extension management</text><text class="s" x="34" y="84">"who gets to change the pipeline"</text>
+  <rect class="box core" x="360" y="20" width="280" height="76" rx="8"/><text class="t" x="374" y="46">ADR-1 · Registry</text><text class="s" x="374" y="66">Component management</text><text class="s" x="374" y="84">"how the pipeline is held and ordered"</text>
+  <rect class="box stash" x="700" y="20" width="280" height="76" rx="8"/><text class="t" x="714" y="46">ADR-3 · HtmlStash</text><text class="s" x="714" y="66">Data preservation</text><text class="s" x="714" y="84">"what content bypasses the pipeline"</text>
+  <!-- arrows ADR2->ADR1 -->
+  <path class="ex" style="color:var(--adr)" d="M300 58H356" marker-end="url(#ah3)"/>
+  <text class="lbl" x="304" y="50">extendMarkdown</text><text class="lbl" x="304" y="78">calls register()</text>
+  <!-- pipeline row -->
+  <rect class="box" x="20" y="190" width="960" height="60" rx="8"/>
+  <text class="t" x="34" y="215">Pipeline: Preprocessors → Block processors → Tree processors (+Inline) → Serializer → Postprocessors</text>
+  <text class="s" x="34" y="236">five Registry instances, run in order by Markdown.convert()</text>
+  <path class="ctl" style="color:var(--accent)" d="M500 96V186" marker-end="url(#ah3)"/><text class="lbl" x="508" y="150">holds every stage</text>
+  <path class="ex" style="color:var(--adr)" d="M160 96V186" marker-end="url(#ah3)"/><text class="lbl" x="168" y="150">adds / replaces / removes processors</text>
+  <path class="st" style="color:var(--inf)" d="M840 96V186" marker-end="url(#ah3)"/><text class="lbl" x="700" y="140">stash written early,</text><text class="lbl" x="700" y="156">restored late</text>
+  <!-- dependency ADR3 on ADR1 -->
+  <path class="ctl" style="color:var(--accent)" d="M640 46C670 30 680 30 696 44" marker-end="url(#ah3)"/>
+  <text class="lbl" x="560" y="290">ADR-3 relies on ADR-1 ordering: html_block (pre 20) must run before block parsing;</text>
+  <text class="lbl" x="560" y="306">raw_html (post 30) must run before other postprocessors that would touch the text.</text>
+  <text class="lbl" x="20" y="290">ADR-2 relies on ADR-1: extensions have no other</text>
+  <text class="lbl" x="20" y="306">sanctioned way to join the pipeline.</text>
+</svg>
+    </div>
+    <div class="grid g3" style="margin-top:12px">
+      <div><h4>Component management</h4><p style="margin:0">ADR-1. One ordered, named container per stage. Foundation for the other two.</p></div>
+      <div><h4>Extension management</h4><p style="margin:0">ADR-2. Finds and builds extensions. Their only job is to edit ADR-1 registries.</p></div>
+      <div><h4>Data preservation</h4><p style="margin:0">ADR-3. A side channel around the pipeline, whose correctness depends on ADR-1 order.</p></div>
+    </div>
+    <p style="margin:14px 0 0"><span class="ev i">INFERENCE</span>Collective effect: a closed core with an open edge. Core code stays fixed; all variation enters as registered processors or stashed strings. The price is that <em>ordering</em> (numbers) and <em>placeholders</em> (strings) become the real contracts, and neither is checked by the type system.</p>
+  </div>
+</section>
+
+<!-- ============ 5. CAUTIONS ============ -->
+<section id="careful" class="warnlist">
+  <h2>5 · What an engineer should be careful about</h2>
+  <p class="lede">Five ways to break the design. Each looks harmless and passes a quick test.</p>
+  <div class="grid g2">
+    <div class="panel"><h3>Breaking Registry behavior</h3>
+      <p><b>Example:</b> changing <code>register()</code> so a duplicate name keeps the old position, or reversing the sort.</p>
+      <p><b>Why it hurts:</b> extensions rely on "same name replaces" and "higher number first". <code>tests/test_apis.py</code> pins this behaviour.</p></div>
+    <div class="panel"><h3>Bypassing extension loading</h3>
+      <p><b>Example:</b> importing <code>markdown.extensions.toc</code> inside <code>core.py</code>, or adding a built-in module without its <code>pyproject.toml</code> entry point.</p>
+      <p><b>Why it hurts:</b> breaks the extensions-to-core dependency rule; the short name will not resolve.</p></div>
+    <div class="panel"><h3>Breaking raw HTML preservation</h3>
+      <p><b>Example:</b> putting <code>"&lt;span&gt;"</code> into <code>element.text</code>, removing the STX/ETX strip in <code>NormalizeWhitespace</code>, or forgetting <code>htmlStash.reset()</code>.</p>
+      <p><b>Why it hurts:</b> HTML gets escaped, users can forge placeholders, or a stale stash leaks between documents.</p></div>
+    <div class="panel"><h3>Incorrect processor order</h3>
+      <p><b>Example:</b> registering a tree processor that reads link text at priority 25, above <code>inline</code> (20).</p>
+      <p><b>Why it hurts:</b> it sees raw <code>[text](url)</code> instead of <code>&lt;a&gt;</code>. Likewise <code>toc</code> (5) must stay after <code>attr_list</code> (8) so custom ids win.</p></div>
+    <div class="panel"><h3>Violating component responsibilities</h3>
+      <p><b>Example:</b> doing inline regex work inside a block processor, or editing the HTML string in a tree processor.</p>
+      <p><b>Why it hurts:</b> each stage assumes a data shape: lines, tree, or string. Work in the wrong stage misses later fixes like unescape or HTML restore.</p></div>
+    <div class="panel"><h3>Forgetting per-document state</h3>
+      <p><b>Example:</b> an extension that collects ids or footnotes but never calls <code>md.registerExtension(self)</code>.</p>
+      <p><b>Why it hurts:</b> <code>Markdown.reset()</code> will not clear it, so a second <code>convert()</code> on the same instance inherits old data.</p></div>
+  </div>
+</section>
+
+<footer>
+  Sources: <code>ARCHITECTURE.md</code>; code in <code>experiment/cond-B/markdown/</code> (<code>core.py</code>, <code>util.py</code>, <code>preprocessors.py</code>, <code>postprocessors.py</code>, <code>treeprocessors.py</code>, <code>blockprocessors.py</code>, <code>inlinepatterns.py</code>, <code>extensions/</code>) and <code>pyproject.toml</code>, Python-Markdown tag 3.11.2. The cond-B tree carries one deliberately injected bug in <code>toc.py</code> (task T1); nothing on this page depends on it.
+</footer>
+</main>
+
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  try{var saved=localStorage.getItem('pm-theme'); if(saved) root.setAttribute('data-theme',saved);}catch(e){}
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    if(!cur){cur=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+    var next=cur==='dark'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    try{localStorage.setItem('pm-theme',next);}catch(e){}
+  });
+
+  var info={
+    entry:'<b>Entry point.</b> <code>markdown.markdown(text, **kwargs)</code> builds a <code>Markdown</code> instance and calls <code>convert()</code>. <code>markdownFromFile()</code> and the CLI wrap the same path.',
+    core:'<b>Markdown class.</b> Constructor runs <code>build_parser()</code> (default registries), creates <code>htmlStash</code>, loads extensions, sets output format, calls <code>reset()</code>. <code>convert()</code> then drives the five stages in a fixed order. Core knows no specific extension.',
+    ext:'<b>Extension system.</b> A string name resolves via entry point, then <code>module:Class</code>, then <code>module.makeExtension()</code>. The resulting object\'s <code>extendMarkdown(md)</code> registers, replaces or removes processors. Stateful extensions call <code>md.registerExtension(self)</code> to be reset per document.',
+    pre:'<b>Preprocessors.</b> Input: list of lines. <code>normalize_whitespace</code> (30) fixes line endings, tabs, and strips STX/ETX. <code>html_block</code> (20) pulls raw HTML blocks into the stash and leaves placeholders. Extensions add more, e.g. <code>fenced_code_block</code> (25).',
+    block:'<b>Block parser.</b> <code>BlockParser.parseDocument()</code> splits on blank lines. For each block it asks every <code>BlockProcessor</code> by priority: <code>test()</code>, and the first that accepts runs <code>run()</code> and appends elements. Processors may recurse for nested content (lists, quotes).',
+    tree:'<b>Tree processors.</b> Each <code>run(root)</code> edits or replaces the tree. <code>inline</code> (20) applies inline patterns; <code>prettify</code> (10) adds newlines; <code>unescape</code> (0) restores escaped chars. Extensions such as <code>attr_list</code> (8) and <code>toc</code> (5) slot in after inline.',
+    inline:'<b>Inline patterns.</b> Regex processors run only inside the <code>inline</code> tree processor. Order: backtick 190, escape 180, reference 170, link 160, image 150, … html 90, entity 80, emphasis 60. Inline raw HTML is also stored in the stash.',
+    ser:'<b>Serializer.</b> <code>to_html_string</code> or <code>to_xhtml_string</code>, chosen by <code>set_output_format()</code>. Escapes element text. Core then strips the outer <code>&lt;div&gt;</code> wrapper.',
+    post:'<b>Postprocessors.</b> Input: one string. <code>raw_html</code> (30) swaps stash placeholders for the stored HTML; <code>amp_substitute</code> (20) restores <code>&amp;</code>. Footnotes adds one at 25.',
+    out:'<b>HTML output.</b> The final string, stripped of surrounding whitespace. The library does not sanitize it; callers handling untrusted input must sanitize.',
+    stash:'<b>Shared utilities.</b> <code>Registry</code> holds every stage. <code>HtmlStash</code> on <code>md.htmlStash</code> is the side channel for finished HTML. <code>AtomicString</code> marks text inline patterns must skip. Placeholders use control chars <code>\\x02</code>/<code>\\x03</code>.'
+  };
+  var detail=document.getElementById('compDetail');
+  document.querySelectorAll('svg .hot').forEach(function(g){
+    g.setAttribute('tabindex','0');
+    var show=function(){detail.innerHTML=info[g.getAttribute('data-k')]||'';};
+    g.addEventListener('click',show);
+    g.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}});
+  });
+
+  var fbtns=document.querySelectorAll('button[data-filter]');
+  fbtns.forEach(function(b){
+    b.addEventListener('click',function(){
+      var f=b.getAttribute('data-filter');
+      document.body.classList.remove('only-c','only-a','only-i');
+      if(f!=='all'){
+        document.body.classList.add('only-'+f);
+        document.querySelectorAll('#adrs details').forEach(function(d){d.open=true;});
+      }
+      fbtns.forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+    });
+  });
+})();
+</script>
+</body>
+</html>

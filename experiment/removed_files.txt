@@ -1,0 +1,115 @@
+# Files removed from Python-Markdown @ b41e0aaf1181f1a8cb200cf5a815aad7c0020d23 (tag 3.11.2)
+# Design docs, the docs site, and other long explanatory text.
+# Total removed paths: 91
+
+## docs/ (user guide, extension docs, API reference, changelog, contributing) (68)
+docs/authors.md
+docs/change_log/index.md
+docs/change_log/release-2.0.md
+docs/change_log/release-2.1.md
+docs/change_log/release-2.2.md
+docs/change_log/release-2.3.md
+docs/change_log/release-2.4.md
+docs/change_log/release-2.5.md
+docs/change_log/release-2.6.md
+docs/changelog.md
+docs/cli.md
+docs/contributing.md
+docs/extensions/abbreviations.md
+docs/extensions/admonition.md
+docs/extensions/api.md
+docs/extensions/attr_list.md
+docs/extensions/code_hilite.md
+docs/extensions/definition_lists.md
+docs/extensions/extra.md
+docs/extensions/fenced_code_blocks.md
+docs/extensions/footnotes.md
+docs/extensions/index.md
+docs/extensions/legacy_attrs.md
+docs/extensions/legacy_em.md
+docs/extensions/md_in_html.md
+docs/extensions/meta_data.md
+docs/extensions/nl2br.md
+docs/extensions/sane_lists.md
+docs/extensions/smarty.md
+docs/extensions/tables.md
+docs/extensions/toc.md
+docs/extensions/wikilinks.md
+docs/index.md
+docs/install.md
+docs/library.md
+docs/playground.md
+docs/reference/markdown.blockparser.md
+docs/reference/markdown.blockprocessors.md
+docs/reference/markdown.extensions.abbr.md
+docs/reference/markdown.extensions.admonition.md
+docs/reference/markdown.extensions.attr_list.md
+docs/reference/markdown.extensions.codehilite.md
+docs/reference/markdown.extensions.def_list.md
+docs/reference/markdown.extensions.extra.md
+docs/reference/markdown.extensions.fenced_code.md
+docs/reference/markdown.extensions.footnotes.md
+docs/reference/markdown.extensions.legacy_attrs.md
+docs/reference/markdown.extensions.legacy_em.md
+docs/reference/markdown.extensions.md
+docs/reference/markdown.extensions.md_in_html.md
+docs/reference/markdown.extensions.meta.md
+docs/reference/markdown.extensions.nl2br.md
+docs/reference/markdown.extensions.sane_lists.md
+docs/reference/markdown.extensions.smarty.md
+docs/reference/markdown.extensions.tables.md
+docs/reference/markdown.extensions.toc.md
+docs/reference/markdown.extensions.wikilinks.md
+docs/reference/markdown.htmlparser.md
+docs/reference/markdown.inlinepatterns.md
+docs/reference/markdown.md
+docs/reference/markdown.postprocessors.md
+docs/reference/markdown.preprocessors.md
+docs/reference/markdown.serializers.md
+docs/reference/markdown.test_tools.md
+docs/reference/markdown.treeprocessors.md
+docs/reference/markdown.util.md
+docs/sanitization.md
+docs/test_tools.md
+
+## Documentation site build and theme (17)
+.zensical/mkdocstring_templates/python/material/attribute.html.jinja
+.zensical/mkdocstring_templates/python/material/class.html.jinja
+.zensical/mkdocstring_templates/python/material/docstring/admonition.html.jinja
+.zensical/mkdocstring_templates/python/material/function.html.jinja
+.zensical/mkdocstring_templates/python/material/module.html.jinja
+.zensical/scripts/griffe_extensions.py
+.zensical/theme/assets/images/favicon.ico
+.zensical/theme/assets/images/py.png
+.zensical/theme/assets/images/pyMd_icon.ico
+.zensical/theme/assets/images/pyMd_icon.png
+.zensical/theme/assets/images/pyMd_icon.svg
+.zensical/theme/assets/images/pyMd_icon2.ico
+.zensical/theme/assets/images/pyMd_icon2.png
+.zensical/theme/assets/images/pyMd_icon2.svg
+.zensical/theme/assets/stylesheets/mkdocstrings.css
+.zensical/theme/partials/copyright.html
+mkdocs.yml
+
+## Documentation tooling (3)
+.pyspelling.yml
+.spell-dict
+checklinks.sh
+
+## Other explanatory text (3)
+﻿.github/pull_request_template.md
+CODE_OF_CONDUCT.md
+INSTALL.md
+
+## Replaced
+README.md  Original README (badges, doc links, support and code-of-conduct text) was replaced
+           by a short usage README: install, one example, how to run tests.
+           pyproject.toml sets readme = README.md, so the file has to stay.
+
+## Kept
+LICENSE.md, source (including docstrings), tests/, tools/, .github/workflows/,
+pyproject.toml, tox.ini, makefile, MANIFEST.in, uv.lock, and the remaining project config.
+
+## Injected after the baseline (present in both cond-A and cond-B)
+markdown/extensions/toc.py, TocTreeprocessor.run: an empty slug is assigned as the
+heading id and is not passed to unique(). See experiment/tasks/T1.md.

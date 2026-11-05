@@ -1,0 +1,377 @@
+diff --git a/markdown/core.py b/markdown/core.py
+index a62b311..7a5d3d8 100644
+--- a/markdown/core.py
++++ b/markdown/core.py
+@@ -209,7 +209,11 @@ class Markdown:
+         `markdown.extensions` group which points to a subclass of the [`markdown.extensions.Extension`][] class.
+         If multiple distributions have registered the same name, the first one found is returned.
+ 
+-        If no entry point is found, assume dot notation (`path.to.module:ClassName`). Load the specified class and
++        If no entry point is found and the name is a bare short name, use the built-in
++        `markdown.extensions.<name>` module when it defines `makeExtension`. This loads
++        built-ins such as `tasklist` from a source checkout before entry points are installed.
++
++        Otherwise, assume dot notation (`path.to.module:ClassName`). Load the specified class and
+         return an instance. If no class is specified, import the module and call a `makeExtension` function and return
+         the [`markdown.extensions.Extension`][] instance returned by that function.
+         """
+@@ -223,6 +227,19 @@ class Markdown:
+         # Get class name (if provided): `path.to.module:ClassName`
+         ext_name, class_name = ext_name.split(':', 1) if ':' in ext_name else (ext_name, '')
+ 
++        # Built-ins are normally loaded via entry points. When those are not
++        # installed (for example a source checkout), a short name such as
++        # `tasklist` still maps to `markdown.extensions.<name>`.
++        if not class_name and '.' not in ext_name:
++            try:
++                module = importlib.import_module(f'markdown.extensions.{ext_name}')
++            except ImportError:
++                module = None
++            else:
++                make = getattr(module, 'makeExtension', None)
++                if make is not None:
++                    return make(**configs)
++
+         try:
+             module = importlib.import_module(ext_name)
+             logger.debug(
+diff --git a/markdown/extensions/tasklist.py b/markdown/extensions/tasklist.py
+new file mode 100644
+index 0000000..4283542
+--- /dev/null
++++ b/markdown/extensions/tasklist.py
+@@ -0,0 +1,105 @@
++# Task List Extension for Python-Markdown
++# =======================================
++
++# Convert `[ ]`, `[x]`, and `[X]` list markers into disabled checkboxes.
++
++# License: [BSD](https://opensource.org/licenses/bsd-license.php)
++
++"""
++Task lists for Python-Markdown.
++
++A bullet or numbered item whose text starts with `[ ]`, `[x]`, or `[X]`
++followed by a space is rendered as a task. The marker is removed and a
++disabled checkbox is inserted at the start of the item. In a loose list the
++checkbox is the first child of the item's first paragraph.
++"""
++
++from __future__ import annotations
++
++import re
++import xml.etree.ElementTree as etree
++from typing import TYPE_CHECKING
++
++from . import Extension
++from ..treeprocessors import Treeprocessor
++
++if TYPE_CHECKING:  # pragma: no cover
++    from markdown import Markdown
++
++
++# Bracket marker plus the required following space. The space stays in the item.
++_TASK_RE = re.compile(r'^\[([ xX])\] ')
++
++
++class TaskListTreeprocessor(Treeprocessor):
++    """ Replace task markers in list items with disabled checkboxes. """
++
++    def __init__(self, md: Markdown, extension: TaskListExtension):
++        super().__init__(md)
++        self.extension = extension
++
++    def run(self, root: etree.Element) -> None:
++        """ Walk every list item and convert those that start with a task marker. """
++        item_class = self.extension.getConfig('item_class')
++        for li in list(root.iter('li')):
++            if self._taskify(li):
++                self._set_item_class(li, item_class)
++                continue
++            # Loose item: the marker lives in the first paragraph, not on the `li`.
++            if (not li.text or not li.text.strip()) and len(li) and li[0].tag == 'p':
++                if self._taskify(li[0]):
++                    self._set_item_class(li, item_class)
++
++    def _taskify(self, elem: etree.Element) -> bool:
++        """ Turn a leading task marker into a checkbox. Return whether it matched. """
++        text = elem.text
++        if not text:
++            return False
++        match = _TASK_RE.match(text)
++        if match is None:
++            return False
++
++        checkbox = etree.Element('input')
++        checkbox.set('type', 'checkbox')
++        checkbox.set('disabled', 'disabled')
++        if match.group(1) in ('x', 'X'):
++            checkbox.set('checked', 'checked')
++        # Drop the bracket marker and keep the separating space plus the rest,
++        # which inline patterns still need to render.
++        checkbox.tail = text[match.end() - 1:]
++        elem.text = None
++        elem.insert(0, checkbox)
++        return True
++
++    @staticmethod
++    def _set_item_class(li: etree.Element, item_class: str) -> None:
++        if item_class:
++            li.set('class', item_class)
++
++
++class TaskListExtension(Extension):
++    """ Add task-list checkboxes to Markdown. """
++
++    def __init__(self, **kwargs):
++        self.config = {
++            'item_class': [
++                'task-list-item',
++                'CSS class set on each task `li`. Default: `task-list-item`.',
++            ],
++        }
++        super().__init__(**kwargs)
++
++    def extendMarkdown(self, md):
++        """ Register `TaskListTreeprocessor` on `treeprocessors` as `tasklist` at priority `25`.
++
++        Priority is above inline processing so the marker is not parsed as a link.
++        The remainder of the item is still rendered as Markdown.
++        """
++        md.treeprocessors.register(
++            TaskListTreeprocessor(md, self), 'tasklist', 25
++        )
++
++
++def makeExtension(**kwargs):  # pragma: no cover
++    """ Return an instance of [`TaskListExtension`][markdown.extensions.tasklist.TaskListExtension]. """
++    return TaskListExtension(**kwargs)
+diff --git a/pyproject.toml b/pyproject.toml
+index 5464a00..ff10667 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -85,6 +85,7 @@ nl2br = 'markdown.extensions.nl2br:Nl2BrExtension'
+ sane_lists = 'markdown.extensions.sane_lists:SaneListExtension'
+ smarty = 'markdown.extensions.smarty:SmartyExtension'
+ tables = 'markdown.extensions.tables:TableExtension'
++tasklist = 'markdown.extensions.tasklist:TaskListExtension'
+ toc = 'markdown.extensions.toc:TocExtension'
+ wikilinks = 'markdown.extensions.wikilinks:WikiLinkExtension'
+ legacy_attrs = 'markdown.extensions.legacy_attrs:LegacyAttrExtension'
+diff --git a/tests/test_syntax/extensions/test_tasklist.py b/tests/test_syntax/extensions/test_tasklist.py
+new file mode 100644
+index 0000000..a962cd2
+--- /dev/null
++++ b/tests/test_syntax/extensions/test_tasklist.py
+@@ -0,0 +1,211 @@
++"""Tests for the tasklist extension."""
++
++from markdown.extensions.tasklist import TaskListExtension
++from markdown.test_tools import TestCase
++
++
++class TestTaskList(TestCase):
++
++    default_kwargs = {'extensions': ['tasklist']}
++    maxDiff = None
++
++    def test_tight_list_xhtml_and_html(self):
++        source = self.dedent(
++            """
++            - [ ] unchecked
++            - [x] checked
++            - [X] upper
++            - plain
++            - [ ]no space
++            - [y] no
++            - [] no
++            - [ x] no
++            """
++        )
++        self.assertMarkdownRenders(
++            source,
++            self.dedent(
++                """
++                <ul>
++                <li class="task-list-item"><input disabled="disabled" type="checkbox" /> unchecked</li>
++                <li class="task-list-item"><input checked="checked" disabled="disabled" type="checkbox" /> checked</li>
++                <li class="task-list-item"><input checked="checked" disabled="disabled" type="checkbox" /> upper</li>
++                <li>plain</li>
++                <li>[ ]no space</li>
++                <li>[y] no</li>
++                <li>[] no</li>
++                <li>[ x] no</li>
++                </ul>
++                """
++            ),
++            output_format='xhtml',
++        )
++        self.assertMarkdownRenders(
++            source,
++            self.dedent(
++                """
++                <ul>
++                <li class="task-list-item"><input disabled type="checkbox"> unchecked</li>
++                <li class="task-list-item"><input checked disabled type="checkbox"> checked</li>
++                <li class="task-list-item"><input checked disabled type="checkbox"> upper</li>
++                <li>plain</li>
++                <li>[ ]no space</li>
++                <li>[y] no</li>
++                <li>[] no</li>
++                <li>[ x] no</li>
++                </ul>
++                """
++            ),
++            output_format='html',
++        )
++
++    def test_ordered_list(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                """
++                1. [ ] one
++                2. [x] two
++                """
++            ),
++            '<ol>\n'
++            '<li class="task-list-item"><input disabled="disabled" type="checkbox" /> one</li>\n'
++            '<li class="task-list-item"><input checked="checked" disabled="disabled" type="checkbox" /> two</li>\n'
++            '</ol>'
++        )
++
++    def test_loose_list_checkbox_in_first_paragraph(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                """
++                - [ ] loose item
++
++                    second para
++
++                - [x] done
++                """
++            ),
++            self.dedent(
++                """
++                <ul>
++                <li class="task-list-item">
++                <p><input disabled="disabled" type="checkbox" /> loose item</p>
++                <p>second para</p>
++                </li>
++                <li class="task-list-item">
++                <p><input checked="checked" disabled="disabled" type="checkbox" /> done</p>
++                </li>
++                </ul>
++                """
++            ),
++        )
++
++    def test_nested_lists(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                """
++                - [ ] parent
++                    - [x] child
++                    - plain
++                """
++            ),
++            '<ul>\n'
++            '<li class="task-list-item"><input disabled="disabled" type="checkbox" /> parent<ul>\n'
++            '<li class="task-list-item"><input checked="checked" disabled="disabled" type="checkbox" /> child</li>\n'
++            '<li>plain</li>\n'
++            '</ul>\n'
++            '</li>\n'
++            '</ul>'
++        )
++
++    def test_markdown_in_item_is_rendered(self):
++        self.assertMarkdownRenders(
++            '- [x] **bold** and *em* and `code` and [link](http://example.com)',
++            '<ul>\n'
++            '<li class="task-list-item"><input checked="checked" disabled="disabled" type="checkbox" /> '
++            '<strong>bold</strong> and <em>em</em> and <code>code</code> and '
++            '<a href="http://example.com">link</a></li>\n'
++            '</ul>'
++        )
++
++    def test_marker_outside_list_is_unchanged(self):
++        self.assertMarkdownRenders(
++            'A paragraph with [x] and [ ] in it.',
++            '<p>A paragraph with [x] and [ ] in it.</p>'
++        )
++
++    def test_marker_not_at_start_of_item(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                """
++                - foo
++
++                    [ ] not the start
++                """
++            ),
++            '<ul>\n'
++            '<li>\n'
++            '<p>foo</p>\n'
++            '<p>[ ] not the start</p>\n'
++            '</li>\n'
++            '</ul>'
++        )
++
++    def test_escaped_marker_is_not_a_task(self):
++        self.assertMarkdownRenders(
++            '- \\[ ] not a task\n- [ ] real',
++            '<ul>\n'
++            '<li>[ ] not a task</li>\n'
++            '<li class="task-list-item"><input disabled="disabled" type="checkbox" /> real</li>\n'
++            '</ul>'
++        )
++
++    def test_reference_link_does_not_consume_marker(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                """
++                [x]: http://example.com
++
++                - [x] something
++                """
++            ),
++            '<ul>\n'
++            '<li class="task-list-item"><input checked="checked" disabled="disabled" type="checkbox" /> '
++            'something</li>\n'
++            '</ul>'
++        )
++
++    def test_item_class_config(self):
++        source = '- [ ] a\n- [x] b'
++        expected = (
++            '<ul>\n'
++            '<li class="todo"><input disabled="disabled" type="checkbox" /> a</li>\n'
++            '<li class="todo"><input checked="checked" disabled="disabled" type="checkbox" /> b</li>\n'
++            '</ul>'
++        )
++        self.assertMarkdownRenders(
++            source,
++            expected,
++            extensions=['tasklist'],
++            extension_configs={'tasklist': {'item_class': 'todo'}},
++        )
++        self.assertMarkdownRenders(
++            source,
++            expected,
++            extensions=[TaskListExtension(item_class='todo')],
++        )
++        self.assertMarkdownRenders(
++            source,
++            expected,
++            extensions=['markdown.extensions.tasklist'],
++            extension_configs={
++                'markdown.extensions.tasklist': {'item_class': 'todo'}
++            },
++        )
++        self.assertMarkdownRenders(
++            source,
++            expected,
++            extensions=['markdown.extensions.tasklist:TaskListExtension'],
++            extension_configs={
++                'markdown.extensions.tasklist:TaskListExtension': {'item_class': 'todo'}
++            },
++        )

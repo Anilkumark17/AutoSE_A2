@@ -1,0 +1,44 @@
+diff --git a/markdown/extensions/admonition.py b/markdown/extensions/admonition.py
+index 37a7136..da6bbf4 100644
+--- a/markdown/extensions/admonition.py
++++ b/markdown/extensions/admonition.py
+@@ -59,7 +59,8 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+     CLASSNAME = 'admonition'
+     CLASSNAME_TITLE = 'admonition-title'
+-    RE = re.compile(r'(?:^|\n)!!! ?([\w\-]+(?: +[\w\-]+)*)(?: +"(.*?)")? *(?:\n|$)')
++    # `!!!` renders a `<div>`. `???` renders the same admonition as a `<details>` disclosure.
++    RE = re.compile(r'(?:^|\n)(?:!{3}|\?{3}) ?([\w\-]+(?: +[\w\-]+)*)(?: +"(.*?)")? *(?:\n|$)')
+     RE_SPACES = re.compile('  +')
+ 
+     def __init__(self, parser: blockparser.BlockParser):
+@@ -91,7 +92,10 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+         sibling = self.lastChild(parent)
+ 
+-        if sibling is None or sibling.tag != 'div' or sibling.get('class', '').find(self.CLASSNAME) == -1:
++        if (
++            sibling is None or sibling.tag not in ('div', 'details') or
++            sibling.get('class', '').find(self.CLASSNAME) == -1
++        ):
+             sibling = None
+         else:
+             # If the last child is a list and the content is sufficiently indented
+@@ -149,12 +153,13 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+         if m:
+             klass, title = self.get_class_and_title(m)
+-            div = etree.SubElement(parent, 'div')
++            collapsible = m.group(0).lstrip('\n').startswith('???')
++            div = etree.SubElement(parent, 'details' if collapsible else 'div')
+             div.set('class', '{} {}'.format(self.CLASSNAME, klass))
+             if title:
+-                p = etree.SubElement(div, 'p')
+-                p.text = title
+-                p.set('class', self.CLASSNAME_TITLE)
++                title_elem = etree.SubElement(div, 'summary' if collapsible else 'p')
++                title_elem.text = title
++                title_elem.set('class', self.CLASSNAME_TITLE)
+         else:
+             # Sibling is a list item, but we need to wrap it's content should be wrapped in <p>
+             if sibling.tag in ('li', 'dd') and sibling.text:

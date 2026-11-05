@@ -1,0 +1,199 @@
+diff --git a/markdown/extensions/admonition.py b/markdown/extensions/admonition.py
+index 37a7136..730c326 100644
+--- a/markdown/extensions/admonition.py
++++ b/markdown/extensions/admonition.py
+@@ -59,7 +59,9 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+     CLASSNAME = 'admonition'
+     CLASSNAME_TITLE = 'admonition-title'
+-    RE = re.compile(r'(?:^|\n)!!! ?([\w\-]+(?: +[\w\-]+)*)(?: +"(.*?)")? *(?:\n|$)')
++    # `!!!` renders a `<div>`; `???` renders a collapsible `<details>`.
++    # Capture groups stay (classes, title) so both markers share title rules.
++    RE = re.compile(r'(?:^|\n)(?:!!!|\?\?\?) ?([\w\-]+(?: +[\w\-]+)*)(?: +"(.*?)")? *(?:\n|$)')
+     RE_SPACES = re.compile('  +')
+ 
+     def __init__(self, parser: blockparser.BlockParser):
+@@ -91,7 +93,10 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+         sibling = self.lastChild(parent)
+ 
+-        if sibling is None or sibling.tag != 'div' or sibling.get('class', '').find(self.CLASSNAME) == -1:
++        if (
++            sibling is None or sibling.tag not in ('div', 'details') or
++            sibling.get('class', '').find(self.CLASSNAME) == -1
++        ):
+             sibling = None
+         else:
+             # If the last child is a list and the content is sufficiently indented
+@@ -149,10 +154,15 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+         if m:
+             klass, title = self.get_class_and_title(m)
+-            div = etree.SubElement(parent, 'div')
++            # `???` is a disclosure; `!!!` stays a div admonition.
++            if m.group(0).lstrip('\n').startswith('???'):
++                tag, title_tag = 'details', 'summary'
++            else:
++                tag, title_tag = 'div', 'p'
++            div = etree.SubElement(parent, tag)
+             div.set('class', '{} {}'.format(self.CLASSNAME, klass))
+             if title:
+-                p = etree.SubElement(div, 'p')
++                p = etree.SubElement(div, title_tag)
+                 p.text = title
+                 p.set('class', self.CLASSNAME_TITLE)
+         else:
+@@ -180,10 +190,12 @@ class AdmonitionProcessor(BlockProcessor):
+             # no title was provided, use the capitalized class name as title
+             # e.g.: `!!! note` will render
+             # `<p class="admonition-title">Note</p>`
++            # and `??? note` will render
++            # `<summary class="admonition-title">Note</summary>`
+             title = klass.split(' ', 1)[0].capitalize()
+         elif title == '':
+             # an explicit blank title should not be rendered
+-            # e.g.: `!!! warning ""` will *not* render `p` with a title
++            # e.g.: `!!! warning ""` will *not* render a title element
+             title = None
+         return klass, title
+ 
+diff --git a/tests/test_extensions.py b/tests/test_extensions.py
+index b8bc3c8..b8bbad1 100644
+--- a/tests/test_extensions.py
++++ b/tests/test_extensions.py
+@@ -265,6 +265,9 @@ class TestAdmonition(unittest.TestCase):
+             ('!!! note', ('note', None)),
+             ('!!! note "Please Note"', ('note', 'Please Note')),
+             ('!!! note ""', ('note', '')),
++            ('??? note', ('note', None)),
++            ('??? note "Please Note"', ('note', 'Please Note')),
++            ('??? note ""', ('note', '')),
+         ]
+         for test, expected in tests:
+             self.assertEqual(RE.match(test).groups(), expected)
+diff --git a/tests/test_syntax/extensions/test_admonition.py b/tests/test_syntax/extensions/test_admonition.py
+index 268633d..f3da3a9 100644
+--- a/tests/test_syntax/extensions/test_admonition.py
++++ b/tests/test_syntax/extensions/test_admonition.py
+@@ -263,3 +263,121 @@ class TestAdmonition(TestCase):
+             ),
+             extensions=['admonition']
+         )
++
++    def test_collapsible_titles(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                ??? note
++                    A *normal* paragraph.
++
++                ??? warning ""
++                    No title element.
++
++                ??? tip "Custom title"
++                    Still here.
++                Not part of the disclosure.
++                '''
++            ),
++            self.dedent(
++                '''
++                <details class="admonition note">
++                <summary class="admonition-title">Note</summary>
++                <p>A <em>normal</em> paragraph.</p>
++                </details>
++                <details class="admonition warning">
++                <p>No title element.</p>
++                </details>
++                <details class="admonition tip">
++                <summary class="admonition-title">Custom title</summary>
++                <p>Still here.</p>
++                </details>
++                <p>Not part of the disclosure.</p>
++                '''
++            ),
++            extensions=['admonition']
++        )
++
++    def test_collapsible_later_block_and_nested(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                ??? note
++                    First paragraph.
++
++                    - one
++                    - two
++
++                    Still inside.
++
++                    !!! warning
++                        Nested *admonition*.
++
++                !!! note
++                    ??? tip "Inner"
++                        A *collapsible* body.
++
++                    Still in the regular admonition.
++                '''
++            ),
++            self.dedent(
++                '''
++                <details class="admonition note">
++                <summary class="admonition-title">Note</summary>
++                <p>First paragraph.</p>
++                <ul>
++                <li>one</li>
++                <li>two</li>
++                </ul>
++                <p>Still inside.</p>
++                <div class="admonition warning">
++                <p class="admonition-title">Warning</p>
++                <p>Nested <em>admonition</em>.</p>
++                </div>
++                </details>
++                <div class="admonition note">
++                <p class="admonition-title">Note</p>
++                <details class="admonition tip">
++                <summary class="admonition-title">Inner</summary>
++                <p>A <em>collapsible</em> body.</p>
++                </details>
++                <p>Still in the regular admonition.</p>
++                </div>
++                '''
++            ),
++            extensions=['admonition']
++        )
++
++    def test_collapsible_in_list(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                - List
++
++                    ??? note "Admontion"
++
++                        - Paragraph
++
++                            Paragraph
++                '''
++            ),
++            self.dedent(
++                '''
++                <ul>
++                <li>
++                <p>List</p>
++                <details class="admonition note">
++                <summary class="admonition-title">Admontion</summary>
++                <ul>
++                <li>
++                <p>Paragraph</p>
++                <p>Paragraph</p>
++                </li>
++                </ul>
++                </details>
++                </li>
++                </ul>
++                '''
++            ),
++            extensions=['admonition']
++        )

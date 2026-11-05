@@ -1,0 +1,161 @@
+diff --git a/markdown/core.py b/markdown/core.py
+index a62b311..1b07288 100644
+--- a/markdown/core.py
++++ b/markdown/core.py
+@@ -23,6 +23,7 @@ import codecs
+ import sys
+ import logging
+ import importlib
++import importlib.util
+ from typing import TYPE_CHECKING, Any, BinaryIO, Callable, ClassVar, Mapping, Sequence
+ from . import util
+ from .preprocessors import build_preprocessors
+@@ -209,7 +210,11 @@ class Markdown:
+         `markdown.extensions` group which points to a subclass of the [`markdown.extensions.Extension`][] class.
+         If multiple distributions have registered the same name, the first one found is returned.
+ 
+-        If no entry point is found, assume dot notation (`path.to.module:ClassName`). Load the specified class and
++        If no entry point is found, a short name with no dots (for example `tasklist`) is loaded from
++        `markdown.extensions` when that module defines `makeExtension`. This keeps built-in extensions
++        available even if the installed entry-point metadata has not been refreshed.
++
++        Otherwise, assume dot notation (`path.to.module:ClassName`). Load the specified class and
+         return an instance. If no class is specified, import the module and call a `makeExtension` function and return
+         the [`markdown.extensions.Extension`][] instance returned by that function.
+         """
+@@ -223,6 +228,12 @@ class Markdown:
+         # Get class name (if provided): `path.to.module:ClassName`
+         ext_name, class_name = ext_name.split(':', 1) if ':' in ext_name else (ext_name, '')
+ 
++        if not class_name and '.' not in ext_name:
++            builtin = f'markdown.extensions.{ext_name}'
++            spec = importlib.util.find_spec(builtin)
++            if spec is not None:
++                return importlib.import_module(builtin).makeExtension(**configs)
++
+         try:
+             module = importlib.import_module(ext_name)
+             logger.debug(
+diff --git a/markdown/extensions/tasklist.py b/markdown/extensions/tasklist.py
+new file mode 100644
+index 0000000..95dde0a
+--- /dev/null
++++ b/markdown/extensions/tasklist.py
+@@ -0,0 +1,105 @@
++# Task List Extension for Python-Markdown
++# =======================================
++
++# Adds GitHub-style task lists. A list item whose text starts with `[ ]`,
++# `[x]`, or `[X]` followed by a space becomes a disabled checkbox.
++
++# Copyright 2026 The Python Markdown Project
++
++# License: [BSD](https://opensource.org/licenses/bsd-license.php)
++
++"""
++Add task-list support to Python-Markdown.
++
++A bullet or numbered item whose text starts with `[ ]`, `[x]`, or `[X]` plus a
++space is rendered as a disabled checkbox.
++"""
++
++from __future__ import annotations
++
++import re
++import xml.etree.ElementTree as etree
++
++from . import Extension
++from ..treeprocessors import Treeprocessor
++
++TASK_RE = re.compile(r'^\[([ xX])\] ')
++""" Match a task marker (`[ ]`, `[x]`, or `[X]`) followed by a space. """
++
++
++class TaskListTreeprocessor(Treeprocessor):
++    """ Insert disabled checkboxes for task-list items. """
++
++    def __init__(self, md, item_class: str):
++        super().__init__(md)
++        self.item_class = item_class
++
++    def run(self, root: etree.Element) -> None:
++        """ Walk every list and convert matching items. """
++        for parent in root.iter():
++            if parent.tag not in ('ul', 'ol'):
++                continue
++            for li in list(parent):
++                if li.tag == 'li':
++                    self._handle_item(li)
++
++    def _handle_item(self, li: etree.Element) -> None:
++        """ Convert one list item when its text starts with a task marker. """
++        if li.text and TASK_RE.match(li.text):
++            self._make_task(li, li)
++            return
++        # Loose lists wrap the item text in a paragraph. Only the first
++        # paragraph counts, and only when the item itself has no other text.
++        if li.text and li.text.strip():
++            return
++        if len(li) and li[0].tag == 'p' and li[0].text and TASK_RE.match(li[0].text):
++            self._make_task(li, li[0])
++
++    def _make_task(self, li: etree.Element, container: etree.Element) -> None:
++        """ Remove the marker and insert a checkbox at the start of `container`. """
++        text = container.text
++        if not text:
++            return
++        match = TASK_RE.match(text)
++        if not match:
++            return
++        # Drop `[ ]` / `[x]` / `[X]` and keep the required space plus the rest,
++        # so the checkbox is the first thing in the item content.
++        checkbox = etree.Element('input')
++        checkbox.set('type', 'checkbox')
++        checkbox.set('disabled', 'disabled')
++        if match.group(1) in 'xX':
++            checkbox.set('checked', 'checked')
++        checkbox.tail = text[3:]
++        container.text = None
++        container.insert(0, checkbox)
++        li.set('class', self.item_class)
++
++
++class TaskListExtension(Extension):
++    """ Add task lists to Markdown. """
++
++    def __init__(self, **kwargs):
++        self.config = {
++            'item_class': ['task-list-item', 'Class name added to a task-list item (`li`).'],
++        }
++        """ Default configuration options. """
++        super().__init__(**kwargs)
++
++    def extendMarkdown(self, md):
++        """ Register `TaskListTreeprocessor` as `tasklist` at priority `16`.
++
++        Priority `16` runs after inline parsing (`20`) and before prettify (`10`),
++        so Markdown in the rest of the item is already rendered.
++
++        """
++        md.treeprocessors.register(
++            TaskListTreeprocessor(md, self.getConfig('item_class')),
++            'tasklist',
++            16,
++        )
++
++
++def makeExtension(**kwargs):  # pragma: no cover
++    """ Return an instance of the `TaskListExtension`. """
++    return TaskListExtension(**kwargs)
+diff --git a/pyproject.toml b/pyproject.toml
+index 5464a00..ff10667 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -85,6 +85,7 @@ nl2br = 'markdown.extensions.nl2br:Nl2BrExtension'
+ sane_lists = 'markdown.extensions.sane_lists:SaneListExtension'
+ smarty = 'markdown.extensions.smarty:SmartyExtension'
+ tables = 'markdown.extensions.tables:TableExtension'
++tasklist = 'markdown.extensions.tasklist:TaskListExtension'
+ toc = 'markdown.extensions.toc:TocExtension'
+ wikilinks = 'markdown.extensions.wikilinks:WikiLinkExtension'
+ legacy_attrs = 'markdown.extensions.legacy_attrs:LegacyAttrExtension'

@@ -1,0 +1,251 @@
+diff --git a/markdown/extensions/admonition.py b/markdown/extensions/admonition.py
+index 37a7136..615b19a 100644
+--- a/markdown/extensions/admonition.py
++++ b/markdown/extensions/admonition.py
+@@ -59,7 +59,9 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+     CLASSNAME = 'admonition'
+     CLASSNAME_TITLE = 'admonition-title'
+-    RE = re.compile(r'(?:^|\n)!!! ?([\w\-]+(?: +[\w\-]+)*)(?: +"(.*?)")? *(?:\n|$)')
++    RE = re.compile(
++        r'(?:^|\n)(?:!{3}|\?{3}) ?([\w\-]+(?: +[\w\-]+)*)(?: +"(.*?)")? *(?:\n|$)'
++    )
+     RE_SPACES = re.compile('  +')
+ 
+     def __init__(self, parser: blockparser.BlockParser):
+@@ -91,7 +93,10 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+         sibling = self.lastChild(parent)
+ 
+-        if sibling is None or sibling.tag != 'div' or sibling.get('class', '').find(self.CLASSNAME) == -1:
++        if (
++            sibling is None or sibling.tag not in ('div', 'details') or
++            sibling.get('class', '').find(self.CLASSNAME) == -1
++        ):
+             sibling = None
+         else:
+             # If the last child is a list and the content is sufficiently indented
+@@ -149,12 +154,16 @@ class AdmonitionProcessor(BlockProcessor):
+ 
+         if m:
+             klass, title = self.get_class_and_title(m)
+-            div = etree.SubElement(parent, 'div')
++            if self._is_collapsible(m):
++                tag, title_tag = 'details', 'summary'
++            else:
++                tag, title_tag = 'div', 'p'
++            div = etree.SubElement(parent, tag)
+             div.set('class', '{} {}'.format(self.CLASSNAME, klass))
+             if title:
+-                p = etree.SubElement(div, 'p')
+-                p.text = title
+-                p.set('class', self.CLASSNAME_TITLE)
++                title_elem = etree.SubElement(div, title_tag)
++                title_elem.text = title
++                title_elem.set('class', self.CLASSNAME_TITLE)
+         else:
+             # Sibling is a list item, but we need to wrap it's content should be wrapped in <p>
+             if sibling.tag in ('li', 'dd') and sibling.text:
+@@ -187,6 +196,14 @@ class AdmonitionProcessor(BlockProcessor):
+             title = None
+         return klass, title
+ 
++    def _is_collapsible(self, match: re.Match[str]) -> bool:
++        """True when the matched marker is ``???`` rather than ``!!!``."""
++
++        text = match.group(0)
++        if text.startswith('\n'):
++            text = text[1:]
++        return text.startswith('???')
++
+ 
+ def makeExtension(**kwargs):  # pragma: no cover
+     return AdmonitionExtension(**kwargs)
+diff --git a/tests/test_syntax/extensions/test_admonition.py b/tests/test_syntax/extensions/test_admonition.py
+index 268633d..6d91a70 100644
+--- a/tests/test_syntax/extensions/test_admonition.py
++++ b/tests/test_syntax/extensions/test_admonition.py
+@@ -263,3 +263,183 @@ class TestAdmonition(TestCase):
+             ),
+             extensions=['admonition']
+         )
++
++
++class TestCollapsibleAdmonition(TestCase):
++
++    def test_default_and_empty_title(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                ??? note
++                    A normal paragraph here
++
++                ??? note anotherclass
++                    The default title is the capitalized first class name.
++
++                ??? tip ""
++                    An explicitly empty string prevents the title from being rendered.
++
++                ??? class1 class2    class3 "And now..."
++                    Several class names can be separated by space chars.
++                '''
++            ),
++            self.dedent(
++                '''
++                <details class="admonition note">
++                <summary class="admonition-title">Note</summary>
++                <p>A normal paragraph here</p>
++                </details>
++                <details class="admonition note anotherclass">
++                <summary class="admonition-title">Note</summary>
++                <p>The default title is the capitalized first class name.</p>
++                </details>
++                <details class="admonition tip">
++                <p>An explicitly empty string prevents the title from being rendered.</p>
++                </details>
++                <details class="admonition class1 class2 class3">
++                <summary class="admonition-title">And now...</summary>
++                <p>Several class names can be separated by space chars.</p>
++                </details>
++                '''
++            ),
++            extensions=['admonition']
++        )
++
++    def test_body_is_markdown(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                ??? note "Mix"
++                    A *word* and a list:
++
++                    - alpha
++                    - beta
++
++                    ??? warning
++
++                        Nested *emphasis*
++                '''
++            ),
++            self.dedent(
++                '''
++                <details class="admonition note">
++                <summary class="admonition-title">Mix</summary>
++                <p>A <em>word</em> and a list:</p>
++                <ul>
++                <li>alpha</li>
++                <li>beta</li>
++                </ul>
++                <details class="admonition warning">
++                <summary class="admonition-title">Warning</summary>
++                <p>Nested <em>emphasis</em></p>
++                </details>
++                </details>
++                '''
++            ),
++            extensions=['admonition']
++        )
++
++    def test_later_indented_block_stays_inside(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                ??? note "Title"
++                    first
++
++                    second
++
++                outside
++                '''
++            ),
++            self.dedent(
++                '''
++                <details class="admonition note">
++                <summary class="admonition-title">Title</summary>
++                <p>first</p>
++                <p>second</p>
++                </details>
++                <p>outside</p>
++                '''
++            ),
++            extensions=['admonition']
++        )
++
++    def test_both_markers_and_nesting(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                !!! note "Outer"
++
++                    ??? warning "Inner"
++
++                        *text*
++
++                    more outer
++
++                ??? tip
++
++                    !!! danger "Nested bang"
++
++                        1. one
++                        2. two
++                '''
++            ),
++            self.dedent(
++                '''
++                <div class="admonition note">
++                <p class="admonition-title">Outer</p>
++                <details class="admonition warning">
++                <summary class="admonition-title">Inner</summary>
++                <p><em>text</em></p>
++                </details>
++                <p>more outer</p>
++                </div>
++                <details class="admonition tip">
++                <summary class="admonition-title">Tip</summary>
++                <div class="admonition danger">
++                <p class="admonition-title">Nested bang</p>
++                <ol>
++                <li>one</li>
++                <li>two</li>
++                </ol>
++                </div>
++                </details>
++                '''
++            ),
++            extensions=['admonition']
++        )
++
++    def test_inside_list(self):
++        self.assertMarkdownRenders(
++            self.dedent(
++                '''
++                - List
++
++                    ??? note "Admontion"
++
++                        - Paragraph
++
++                            Paragraph
++                '''
++            ),
++            self.dedent(
++                '''
++                <ul>
++                <li>
++                <p>List</p>
++                <details class="admonition note">
++                <summary class="admonition-title">Admontion</summary>
++                <ul>
++                <li>
++                <p>Paragraph</p>
++                <p>Paragraph</p>
++                </li>
++                </ul>
++                </details>
++                </li>
++                </ul>
++                '''
++            ),
++            extensions=['admonition']
++        )

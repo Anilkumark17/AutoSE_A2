@@ -1,0 +1,16 @@
+diff --git a/markdown/extensions/toc.py b/markdown/extensions/toc.py
+index c3c4d34..5684582 100644
+--- a/markdown/extensions/toc.py
++++ b/markdown/extensions/toc.py
+@@ -379,10 +379,7 @@ class TocTreeprocessor(Treeprocessor):
+                 # Do not override pre-existing ids
+                 if "id" not in el.attrib:
+                     slug = self.slugify(html.unescape(name), self.sep)
+-                    if slug:
+-                        el.attrib["id"] = unique(slug, used_ids)
+-                    else:
+-                        el.attrib["id"] = slug
++                    el.attrib["id"] = unique(slug, used_ids)
+ 
+                 data_toc_label = ''
+                 if 'data-toc-label' in el.attrib:
